@@ -86,19 +86,27 @@
     try {
       // webkit shim
       window.AudioContext = window.AudioContext || window.webkitAudioContext;
-      navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia;
+      navigator.getUserMedia = ( navigator.getUserMedia ||
+      navigator.webkitGetUserMedia ||
+      navigator.msGetUserMedia);
       window.URL = window.URL || window.webkitURL;
-      
+
       audio_context = new AudioContext;
       __log('Audio context set up.');
       __log('navigator.getUserMedia ' + (navigator.getUserMedia ? 'available.' : 'not present!'));
     } catch (e) {
-      alert('No web audio support in this browser!');
+      __log('Voice message will only work in Firefox and Chrome.');
     }
-    
-    navigator.getUserMedia({audio: true}, startUserMedia, function(e) {
-      __log('No live audio input: ' + e);
-    });
+
+    if (navigator.getUserMedia){
+      navigator.getUserMedia({audio: true}, startUserMedia, function(e) {
+        __log('No live audio input: ' + e);
+      });
+    }else {
+      navigator.mediaDevices.getUserMedia({audio: true})
+              .then(function(mediaStream) {startUserMedia(mediaStream);})
+              .catch(function(error) { __log('No live audio input: ' + error);});
+    }
   };
   </script>
 

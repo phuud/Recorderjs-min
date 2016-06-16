@@ -42,9 +42,10 @@ var Recorder = exports.Recorder = (function () {
         _classCallCheck(this, Recorder);
 
         this.config = {
-            bufferLen: 4096,
-            numChannels: 2,
-            mimeType: 'audio/wav'
+            bufferLen: 1024,
+            numChannels: 1,
+            mimeType: 'audio/wav',
+            sampleRate: 44100 / 6
         };
         this.recording = false;
         this.callbacks = {
@@ -100,7 +101,8 @@ var Recorder = exports.Recorder = (function () {
             };
 
             function init(config) {
-                sampleRate = config.sampleRate;
+                //sampleRate = config.sampleRate;
+                sampleRate = 48000/6;
                 numChannels = config.numChannels;
                 initBuffers();
             }
@@ -150,26 +152,37 @@ var Recorder = exports.Recorder = (function () {
             }
 
             function mergeBuffers(recBuffers, recLength) {
-                var result = new Float32Array(recLength);
+                var resultin = new Float32Array(recLength);
                 var offset = 0;
                 for (var i = 0; i < recBuffers.length; i++) {
-                    result.set(recBuffers[i], offset);
+                    resultin.set(recBuffers[i], offset);
                     offset += recBuffers[i].length;
+                }
+                //压缩
+                var compression = 6;
+                var length =  parseInt(resultin.length / compression);
+                var result = new Float32Array(length);
+                var index = 0, j = 0;
+                while (index < length) {
+                    result[index] = resultin[j];
+                    j += compression;
+                    index++;
                 }
                 return result;
             }
 
             function interleave(inputL, inputR) {
-                var length = inputL.length + inputR.length;
+                var compression = 6;    //计算压缩率
+                var length = parseInt(inputL.length / compression);
                 var result = new Float32Array(length);
 
                 var index = 0,
                     inputIndex = 0;
 
                 while (index < length) {
-                    result[index++] = inputL[inputIndex];
-                    result[index++] = inputR[inputIndex];
-                    inputIndex++;
+                    result[index] = inputL[inputIndex];
+                    inputIndex += compression;//每次都跳过3个数据
+                    index++;
                 }
                 return result;
             }
@@ -181,6 +194,15 @@ var Recorder = exports.Recorder = (function () {
                 }
             }
 
+            function floatTo8BitPCM(output, offset, input) {
+                for (var i = 0; i < input.length; i++, offset++) {    //这里只能加1
+                    var s = Math.max(-1, Math.min(1, input[i]));
+                    var val = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    val = parseInt(255 / (65535 / (val + 32768)));
+                    output.setInt8(offset, val, true);
+                }
+            }
+
             function writeString(view, offset, string) {
                 for (var i = 0; i < string.length; i++) {
                     view.setUint8(offset + i, string.charCodeAt(i));
@@ -188,38 +210,44 @@ var Recorder = exports.Recorder = (function () {
             }
 
             function encodeWAV(samples) {
-                var buffer = new ArrayBuffer(44 + samples.length * 2);
+                var sampleBits = 8;//16;//这里改成8位
+                var dataLength = samples.length * (sampleBits / 8);
+                var buffer = new ArrayBuffer(44 + dataLength);
                 var view = new DataView(buffer);
 
-                /* RIFF identifier */
-                writeString(view, 0, 'RIFF');
-                /* RIFF chunk length */
-                view.setUint32(4, 36 + samples.length * 2, true);
-                /* RIFF type */
-                writeString(view, 8, 'WAVE');
-                /* format chunk identifier */
-                writeString(view, 12, 'fmt ');
-                /* format chunk length */
-                view.setUint32(16, 16, true);
-                /* sample format (raw) */
-                view.setUint16(20, 1, true);
-                /* channel count */
-                view.setUint16(22, numChannels, true);
-                /* sample rate */
-                view.setUint32(24, sampleRate, true);
-                /* byte rate (sample rate * block align) */
-                view.setUint32(28, sampleRate * 4, true);
-                /* block align (channel count * bytes per sample) */
-                view.setUint16(32, numChannels * 2, true);
-                /* bits per sample */
-                view.setUint16(34, 16, true);
-                /* data chunk identifier */
-                writeString(view, 36, 'data');
-                /* data chunk length */
-                view.setUint32(40, samples.length * 2, true);
+                var sampleRateTmp = sampleRate;
 
-                floatTo16BitPCM(view, 44, samples);
-
+                var channelCount = 1;
+                var offset = 0;
+                /* 资源交换文件标识符 */
+                writeString(view, offset, 'RIFF'); offset += 4;
+                /* 下个地址开始到文件尾总字节数,即文件大小-8 */
+                view.setUint32(offset, /*32这里地方栗子中的值错了,但是不知道为什么依然可以运行成功*/ 36 + dataLength, true); offset += 4;
+                /* WAV文件标志 */
+                writeString(view, offset, 'WAVE'); offset += 4;
+                /* 波形格式标志 */
+                writeString(view, offset, 'fmt '); offset += 4;
+                /* 过滤字节,一般为 0x10 = 16 */
+                view.setUint32(offset, 16, true); offset += 4;
+                /* 格式类别 (PCM形式采样数据) */
+                view.setUint16(offset, 1, true); offset += 2;
+                /* 通道数 */
+                view.setUint16(offset, channelCount, true); offset += 2;
+                /* 采样率,每秒样本数,表示每个通道的播放速度 */
+                view.setUint32(offset, sampleRateTmp, true); offset += 4;
+                /* 波形数据传输率 (每秒平均字节数) 通道数×每秒数据位数×每样本数据位/8 */
+                view.setUint32(offset, sampleRateTmp * channelCount * (sampleBits / 8), true); offset += 4;
+                /* 快数据调整数 采样一次占用字节数 通道数×每样本的数据位数/8 */
+                view.setUint16(offset, channelCount * (sampleBits / 8), true); offset += 2;
+                /* 每样本数据位数 */
+                view.setUint16(offset, sampleBits, true); offset += 2;
+                /* 数据标识符 */
+                writeString(view, offset, 'data'); offset += 4;
+                /* 采样数据总数,即数据总大小-44 */
+                view.setUint32(offset, dataLength, true); offset += 4;
+                /* 采样数据 */
+                //floatTo16BitPCM(view, 44, samples);
+                floatTo8BitPCM(view, 44, samples);//这里改为写入8位的数据
                 return view;
             }
         }, self);
