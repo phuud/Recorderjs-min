@@ -32,8 +32,10 @@
 
   var audio_context;
   var recorder;
+  var localStream;
 
   function startUserMedia(stream) {
+    localStream = stream;
     var input = audio_context.createMediaStreamSource(stream);
     __log('Media stream created.');
 
