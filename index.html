@@ -48,22 +48,30 @@
   }
 
   function startRecording(button) {
-    recorder && recorder.record();
-    button.disabled = true;
-    button.nextElementSibling.disabled = false;
-    __log('Recording...');
+    if(!recorder){
+      __log('No web audio support in this browser!');
+    }else{
+      recorder && recorder.record();
+      button.disabled = true;
+      button.nextElementSibling.disabled = false;
+      __log('Recording...');
+    }
   }
 
   function stopRecording(button) {
-    recorder && recorder.stop();
-    button.disabled = true;
-    button.previousElementSibling.disabled = false;
-    __log('Stopped recording.');
-    
-    // create WAV download link using audio data blob
-    createDownloadLink();
-    
-    recorder.clear();
+    if(!recorder){
+      __log('No web audio support in this browser!');
+    }else{
+      recorder && recorder.stop();
+      button.disabled = true;
+      button.previousElementSibling.disabled = false;
+      __log('Stopped recording.');
+
+      // create WAV download link using audio data blob
+      createDownloadLink();
+
+      recorder.clear();
+    }
   }
 
   function createDownloadLink() {
@@ -97,7 +105,7 @@
       __log('Audio context set up.');
       __log('navigator.getUserMedia ' + (navigator.getUserMedia ? 'available.' : 'not present!'));
     } catch (e) {
-      __log('Voice message will only work in Firefox and Chrome.');
+      __log('No web audio support in this browser!');
     }
 
     if (navigator.getUserMedia){
